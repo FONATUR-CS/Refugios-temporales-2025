@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Refugios Temporales Acapulco - Coyuca</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster/dist/MarkerCluster.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster/dist/MarkerCluster.Default.css" />
+
+  <link rel="stylesheet" href="https://unpkg.com/leaflet-search/dist/leaflet-search.min.css" />
+
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;700&display=swap" rel="stylesheet">
+
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;700&display=swap');
+
+    body {
+      margin: 0;
+      font-family: 'Noto Sans', sans-serif;
+      background-color: #f2f2f2;
+    }
+
+    header {
+      background-color: #002f2a;
+      color: white;
+      padding: 10px 20px;
+      text-align: center;
+    }
+
+    header h1 {
+      margin: 0;
+      font-size: 1.4em;
+      font-weight: 700;
+    }
+
+    header p {
+      font-size: 0.9em;
+      font-weight: 400;
+      margin-top: 5px;
+      line-height: 1.4;
+    }
+
+    #map {
+      position: relative;
+      width: 100%;
+      height: calc(100vh - 260px);
+      max-height: 800px;
+      z-index: 1;
+    }
+    
+    #loader {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background-color: rgba(255, 255, 255, 0.9);
+      padding: 20px;
+      border-radius: 8px;
+      z-index: 1000;
+      font-weight: bold;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+    }
+    
+    #locate-btn {
+      position: absolute;
+      top: 90px;
+      left: 10px;
+      z-index: 1000;
+      background-color: white;
+      border: 2px solid rgba(0,0,0,0.2);
+      border-radius: 4px;
+      width: 34px;
+      height: 34px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #locate-btn:hover {
+      background-color: #f4f4f4;
+    }
+
+    #locate-btn img {
+      width: 20px;
+      height: 20px;
+    }
+
+    footer {
+      text-align: center;
+      padding: 10px 0;
+      background-color: white;
+    }
+
+    footer img {
+      max-width: 100%;
+      height: auto;
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <h1>Ubicación de refugios temporales Acapulco - Coyuca</h1>
+    <p>
+      Fuentes: Sistema Nacional de Registro de Refugios Temporales, Coordinación Nacional de Protección Civil, 2025; Catálogo de refugios temporales 2025. Coordinación General de Protección Civil y Bomberos Acapulco, 2025;
+      Catálogo de refugios temporales 2025. Gobierno de Coyuca de Benítez 2024-2027; y Catálogo de refugios temporales
+      2025. Secretaría de Gestión Integral de Riesgos y Protección Civil Guerrero, 2025.
+      Recuperado de: 
+      [1] <a href="https://www.preparados.gob.mx/apps/RefugiosTemporales/" target="_blank">Sistema Nacional de Registro de Refugios Temporales</a>
+      [2] <a href="https://www.guerrero.gob.mx/wp-content/uploads/2025/05/RT-SGIRPCGRO-2025.pdf" target="_blank">Gobierno del Estado de Guerrero</a>
+      [3] <a href="https://acapulco.gob.mx/refugios-temporales/" target="_blank">Gobierno Municipal de Acapulco de Juárez</a>
+      [4] <a href="https://www.facebook.com/photo/?fbid=122159397968563471&set=a.122093539370563471" target="_blank">Gobierno Municipal de Coyuca de Benítez</a>  
+    </p>
+  </header>
+
+  <div id="loader">Cargando datos de los refugios...</div>
+  <div id="map"></div>
+  <button id="locate-btn" title="Encontrar mi ubicación">
+    <img src="my-location.svg" alt="Mi ubicación"/>
+  </button>
+
+  <footer>
+    <img src="footer.png" alt="Footer Institucional">
+  </footer>
+
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  
+  <script src="https://unpkg.com/leaflet.markercluster/dist/leaflet.markercluster.js"></script>
+  
+  <script src="https://unpkg.com/leaflet-search/dist/leaflet-search.min.js"></script>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+
+  <script>
+    const refugiosLayer = L.markerClusterGroup();
+
+    const satelliteWithLabels = L.layerGroup([
+      L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'),
+      L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', {
+        attribution: 'Tiles © Esri'
+      })
+    ]);
+
+    const map = L.map('map', {
+      layers: [satelliteWithLabels, refugiosLayer]
+    });
+
+    const loader = document.getElementById('loader');
+    loader.style.display = 'block';
+
+    let refugiosData = {};
+    Papa.parse("refugios.csv", {
+      download: true,
+      header: true,
+      complete: function(results) {
+        results.data.forEach(row => {
+          refugiosData[row.CLV] = row;
+        });
+        cargarGeojsonRefugios();
+      }
+    });
+
+    function cargarGeojsonRefugios() {
+      fetch("refugios.geojson")
+        .then(res => res.json())
+        .then(geojson => {
+          const capaRefugios = L.geoJSON(geojson, {
+            pointToLayer: function(feature, latlng) {
+              const clave = feature.properties.CLAVE;
+              const props = refugiosData[clave];
+
+              if (!props) {
+                return null;
+              }
+
+              const customIcon = L.icon({
+                iconUrl: 'refugio.svg',
+                iconSize: [30, 30],
+                iconAnchor: [15, 15],
+                popupAnchor: [0, -15]
+              });
+
+              const marker = L.marker(latlng, { 
+                icon: customIcon,
+                title: props.Nombre 
+              });
+
+              const popup = "<strong>" + props.Nombre + "</strong><br>" +
+                            "<b>Dirección:</b> " + props["Dirección"] + "<br>" +
+                            "<b>Capacidad personas:</b> " + props["Capacidad de personas"] + "<br>" +
+                            "<b>Capacidad familias:</b> " + props["Capacidad de familias"] + "<br>" +
+                            "<b>Municipio:</b> " + props["Municipio"] + "<br>" +
+                            "<b>Responsable del H. Ayuntamiento:</b> " + props["Responsable del H. Ayuntamiento"] + "<br>" +
+                            '<b>Ubicación:</b> <a href="' + props["Ubicación"] + '" target="_blank">Ver ubicación</a>';
+
+              marker.bindPopup(popup);
+              refugiosLayer.addLayer(marker);
+            }
+          });
+
+          map.fitBounds(refugiosLayer.getBounds());
+
+          const searchControl = new L.Control.Search({
+            layer: refugiosLayer,
+            propertyName: 'title',
+            marker: false,
+            moveToLocation: function(latlng, title, map) {
+              map.setView(latlng, 16);
+            }
+          });
+
+          searchControl.on('search:locationfound', function(e) {
+            e.layer.openPopup();
+          });
+
+          map.addControl(searchControl);
+          
+          loader.style.display = 'none';
+        });
+    }
+
+    const locateBtn = document.getElementById('locate-btn');
+    locateBtn.addEventListener('click', function() {
+      if ('geolocation' in navigator) {
+        navigator.geolocation.getCurrentPosition(function(position) {
+          const lat = position.coords.latitude;
+          const lng = position.coords.longitude;
+          
+          map.setView([lat, lng], 15);
+          L.marker([lat, lng]).addTo(map)
+            .bindPopup('<b>Tu ubicación aproximada</b>').openPopup();
+
+        }, function(error) {
+          alert('No se pudo obtener tu ubicación. Por favor, asegúrate de haber concedido los permisos.');
+        });
+      } else {
+        alert('La geolocalización no está disponible en tu navegador.');
+      }
+    });
+  </script>
+</body>
+</html>
